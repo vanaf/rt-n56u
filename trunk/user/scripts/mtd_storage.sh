@@ -25,15 +25,17 @@ func_get_mtd()
 
 func_load()
 {
-	local fsz
+	local fsz tbz2
 
 	[ ! -d "$dir_storage" ] && mkdir -p -m 755 $dir_storage
 	echo "Loading files from mtd partition \"$mtd_part_dev\""
 
+	tbz2="${tmp}.bz2"
+	cat $mtd_part_dev > $tbz2 2>/dev/null
 	bzcat $mtd_part_dev > $tmp 2>/dev/null
 	fsz=`stat -c %s $tmp 2>/dev/null`
 	if [ -n "$fsz" ] && [ $fsz -gt 0 ] ; then
-		md5sum $tmp > $hsh
+		md5sum $tbz2 > $hsh
 		tar xf $tmp -C $dir_storage 2>/dev/null
 		echo "Done."
 	else
@@ -49,26 +51,16 @@ func_save()
 {
 	local fsz tbz2
 
-	[ -f "$ers" ] && return 1
-
-	[ ! -d "$dir_storage" ] && mkdir -p -m 755 $dir_storage
-	echo "Save files to mtd partition \"$mtd_part_dev\""
-
 	tbz2="${tmp}.bz2"
-	rm -f $tmp
-	rm -f $tbz2
-	cd $dir_storage
-	find * -print0 | xargs -0 touch -c -h -t 201001010000.00
-	find * ! -type d -print0 | sort -z | xargs -0 tar -cf $tmp 2>/dev/null
-	cd - >>/dev/null
+	
+
 	md5sum -c -s $hsh 2>/dev/null
 	if [ $? -eq 0 ] ; then
 		echo "Storage hash is not changed, skip write to mtd partition. Exit."
-		rm -f $tmp
-		return 0
+		rm -f $tbz2
+		exit 0
 	fi
-	[ -f "$tmp" ] && md5sum $tmp > $hsh
-	bzip2 -9 $tmp 2>/dev/null
+	[ -f "$tbz2" ] && md5sum $tbz2 > $hsh
 	fsz=`stat -c %s $tbz2 2>/dev/null`
 	if [ -n "$fsz" ] && [ $fsz -gt 0 ] && [ $fsz -lt $mtd_part_size ] ; then
 		mtd_write write $tbz2 $mtd_part_name
@@ -82,7 +74,6 @@ func_save()
 		result=1
 		echo "Error! Invalid storage data size: $fsz"
 	fi
-	rm -f $tmp
 	rm -f $tbz2
 }
 
@@ -475,8 +466,14 @@ load)
 	;;
 save)
 	func_get_mtd
-	func_save
+	func_backup
+	[ $result -eq 0 ] && func_save
 	;;
+restore)
+	func_get_mtd
+	func_save
+	[ $result -eq 0 ] && func_load
+        ;;
 backup)
 	func_backup
 	;;
@@ -492,7 +489,7 @@ fill)
 	func_fill
 	;;
 *)
-	echo "Usage: $0 {load|save|backup|erase|reset|fill}"
+	echo "Usage: $0 {load|save|restore|backup|erase|reset|fill}"
 	exit 1
 	;;
 esac

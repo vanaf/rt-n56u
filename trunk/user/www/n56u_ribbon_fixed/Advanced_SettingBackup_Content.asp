@@ -45,7 +45,9 @@ function initial(){
 		showhide_div('row_nv_restore2', 1);
 		showhide_div('row_st_reset', 1);
 		showhide_div('row_st_backup', 1);
-	}
+                showhide_div('row_st_restore1', 1);
+                showhide_div('row_st_restore2', 1);
+ 	}
 
 	if (support_mtd_rwfs())
 		showhide_div('tbl_rwfs', 1);
@@ -163,6 +165,29 @@ function uploadSetting(){
 		document.form.submit();
 	}
 }
+
+function uploadStorage(){
+        document.form.file.name = "file_nv"; 
+        var file_obj = document.form.file_st;
+        file_obj.name="file";
+        if(file_obj.value == ""){
+                alert("<#JS_fieldblank#>");
+                file_obj.focus();
+        }
+        else if(file_obj.value.length < 6 ||
+                                        file_obj.value.lastIndexOf(".TBZ") < 0 ||
+                                        file_obj.value.lastIndexOf(".TBZ") != (file_obj.value.length)-4){
+                alert("<#Storage_upload_hint#>");
+                file_obj.focus();
+        }
+        else{
+                disableCheckChangedStatus();
+                switch_form_action(1, "uploadStorage");
+                document.form.submit();
+        }
+}
+
+
 
 $j.fn.fileName = function() {
 	var $this = $j(this),
@@ -367,6 +392,18 @@ $j.fn.fileName = function() {
                                             <th><#Adm_Setting_store_backup#></th>
                                             <td>
                                                 <input name="st_action2" class="btn btn-info" style="width: 219px;" onclick="saveStorage();" type="button" value="<#CTL_onlysave#>"/>
+                                            </td>
+                                        </tr>
+                                        <tr id="row_st_restore1" style="display:none">
+                                            <th><a class="help_tooltip" href="javascript:void(0);" onmouseover="openTooltip(this,19,3)"><#Storage_upload_itemname#></a></th>
+                                            <td>
+                                                <input name="file_st" type="file" size="36" />
+                                            </td>
+                                        </tr>
+                                        <tr id="row_st_restore2" style="display:none">
+                                            <th style="border-top: 0 none; padding-top: 0px;"></th>
+                                            <td style="border-top: 0 none; padding-top: 0px;">
+                                                <input name="uploadbutton" class="btn btn-info" style="width: 219px;" onclick="uploadStorage();" type="button" value="<#CTL_upload#>"/>
                                             </td>
                                         </tr>
                                         <tr>

@@ -76,6 +76,8 @@
 #define PROFILE_HEADER_NEW	"HDR2"
 #define PROFILE_FIFO_UPLOAD	"/tmp/settings_u.prf"
 #define PROFILE_FIFO_DOWNLOAD	"/tmp/settings_d.prf"
+#define STORAGE_FIFO_FILENAME   "/tmp/.storage_tar.bz2"
+
 
 static int apply_cgi_group(webs_t wp, int sid, struct variable *var, const char *groupName, int flag);
 static int nvram_generate_table(webs_t wp, char *serviceId, char *groupName);
@@ -3594,7 +3596,7 @@ checkcrc_end:
 }
 
 static int chk_image_err = 1;
-static int chk_nvram_err = 1;
+static int upload_err = 1;
 
 static void
 do_upgrade_post(const char *url, FILE *stream, int clen, char *boundary)
@@ -3725,15 +3727,24 @@ do_upgrade_cgi(const char *url, FILE *stream)
 static void
 do_upload_post(const char *url, FILE *stream, int clen, char *boundary)
 {
+
 	FILE *fifo = NULL;
-	char upload_fifo[] = PROFILE_FIFO_UPLOAD;
+	char *upload_fifo = PROFILE_FIFO_UPLOAD;
 	char buf[1024];
 	int cnt, count, offset, ret, ch;
 	long filelen;
 	char valid_header = 0;
 
 	ret = EINVAL;
-	chk_nvram_err = 1;
+	upload_err = 1;
+
+        char *action_mode = websGetVar(wp, "action_mode", "uploadSettings");
+
+	if (strcmp(action_mode, "uploadStorage")) {
+		upload_fifo = STORAGE_FIFO_FILENAME;
+		valid_header = 1;
+	}
+
 
 	/* Look for our part */
 	while (clen > 0) {
@@ -3781,11 +3792,12 @@ do_upload_post(const char *url, FILE *stream, int clen, char *boundary)
 			offset = 0;
 			cnt++;
 			
-			ret = check_nvram_header(buf, &filelen);
-			if (ret != 0)
-				goto err;
-			
-			valid_header = 1;
+			if (valid_header != 1){
+				ret = check_nvram_header(buf, &filelen);
+				if (ret != 0)
+					goto err;
+				valid_header = 1;
+			}
 		}
 		
 		filelen -= count;
@@ -3822,22 +3834,33 @@ err:
 			break;
 
 	if ((ret == 0) && (valid_header))
-		chk_nvram_err = 0;
+		upload_err = 0;
 }
 
 static void
 do_upload_cgi(const char *url, FILE *stream)
 {
-	/* Reboot if successful */
-	if (chk_nvram_err == 0) {
-		doSystem("killall %s %s", "-q", "watchdog");
-		sleep(1);
-		websApply(stream, "Uploading.asp");
-		eval("nvram", "restore", PROFILE_FIFO_UPLOAD);
-		nvram_commit();
-		sys_reboot();
+        char *upload_file = PROFILE_FIFO_UPLOAD;
+
+        char *action_mode = websGetVar(wp, "action_mode", "uploadSettings");
+        if (strcmp(action_mode, "uploadStorage")) {
+		upload_file = STORAGE_FIFO_FILENAME; 
+	}
+
+	if (upload_err == 0) {
+		if (strcmp(action_mode, "uploadStorage")) {
+	                doSystem("/sbin/mtd_storage.sh %s", "restore");
+		}else{
+		        /* Reboot if successful */
+			doSystem("killall %s %s", "-q", "watchdog");
+			sleep(1);
+			websApply(stream, "Uploading.asp");
+			eval("nvram", "restore", upload_file);
+			nvram_commit();
+			sys_reboot();
+		}
 	} else {
-		unlink(PROFILE_FIFO_UPLOAD);
+		unlink(upload_file);
 		websApply(stream, "UploadError.asp");
 	}
 }
@@ -3858,7 +3881,7 @@ do_nvram_file(const char *url, FILE *stream)
 static void
 do_storage_file(const char *url, FILE *stream)
 {
-	const char *storage_file = "/tmp/.storage_tar.bz2";
+	const char *storage_file = STORAGE_FIFO_FILENAME;
 
 	unlink(storage_file);
 	if (get_login_safe()) {
